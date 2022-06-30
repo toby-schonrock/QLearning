@@ -24,6 +24,7 @@ class Vector2 {
     Vector2& operator/=(double scale) { x /= scale; y /= scale; return *this; }
     // clang-format on
 
+    friend bool operator==(const Vector2& lhs, const Vector2& rhs) { return lhs.x == rhs.x && lhs.y == rhs.y; }
     friend Vector2 operator+(Vector2 lhs, const Vector2& rhs) { return lhs += rhs; }
     friend Vector2 operator-(Vector2 lhs, const Vector2& rhs) { return lhs -= rhs; }
     friend Vector2 operator*(Vector2 lhs, double scale) { return lhs *= scale; }

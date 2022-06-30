@@ -2,7 +2,7 @@
 #include <cmath>
 #include <cstddef>
 #include <iostream>
-#include <numbers>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -26,25 +26,53 @@ class Snake {
     void move(bool grow) {
         Vec2I oldPos = pieces[head];
         if (grow) {
-            pieces.insert(pieces.begin() + head, pieces[head]);
+            pieces.insert(pieces.begin() + static_cast<std::ptrdiff_t>(head), Vec2I());
             head += 1; 
-            // std::cout <<  pieces.size();
         }
         if (head == 0) head = pieces.size();
         head -= 1;
         pieces[head] = oldPos + direction;
     }
 
+
     void draw(sf::RenderWindow& window, sf::RectangleShape rec){
         for(const auto& p: pieces) {
             rec.setPosition(static_cast<float>(p.x) * 10, static_cast<float>(p.y) * 10);
             window.draw(rec);
         }
+        rec.setFillColor(sf::Color::Red);
+        rec.setSize(sf::Vector2f(3,3));
+        sf::RectangleShape rec2 = rec;
+        Vector2<float> headPos(static_cast<float>(pieces[head].x), static_cast<float>(pieces[head].y));
+        if (direction == Vec2I(1, 0)) {
+            rec.setPosition(headPos.x * 10 + 7, headPos.y * 10); // right
+            rec2.setPosition(headPos.x * 10 + 7, headPos.y * 10 + 7);
+        }
+        else if (direction == Vec2I(-1, 0)) {
+            rec.setPosition(headPos.x * 10, headPos.y * 10); // left
+            rec2.setPosition(headPos.x * 10, headPos.y * 10 + 7);
+        }
+        else if (direction == Vec2I(0, -1)) {
+            rec.setPosition(headPos.x * 10 + 7, headPos.y * 10); // up
+            rec2.setPosition(headPos.x * 10, headPos.y * 10);
+        }
+        else {
+            rec.setPosition(headPos.x * 10 + 7, headPos.y * 10 + 7); // down      
+            rec2.setPosition(headPos.x * 10, headPos.y * 10 + 7);
+        }
+        window.draw(rec);
+        window.draw(rec2);
+    }
+
+    bool danger(const Vec2I& d) {
+        Vec2I newHead = pieces[head] + d;
+        if (newHead.x < 0 || newHead.x > gridSize.x || newHead.y < 0 || newHead.y > gridSize.y) return true;
+        return std::any_of(pieces.cbegin(), pieces.cend(), [newHead](const Vec2I& p) {return p == newHead;}); // i used a lambda and a std algorithm yey :)
     }
 };
 
 int main() {
-    const Vec2I gridSize(50,50);
+    const Vec2I gridSize(49,49);
     Snake snake(Vec2I(1, 1), gridSize);
 
     sf::RectangleShape body;
@@ -52,7 +80,7 @@ int main() {
     body.setFillColor(sf::Color::Green);
 
     sf::ContextSettings settings;
-    settings.antialiasingLevel = 8;
+    // settings.antialiasingLevel = 8;
     sf::RenderWindow window(sf::VideoMode(500,500), "Snake", sf::Style::Default, settings); // sf::VideoMode::getDesktopMode(), sf::Style::Fullscreen old one
     ImGui::SFML::Init(window);
 
@@ -65,28 +93,29 @@ int main() {
                 if (event.type == sf::Event::KeyPressed) {
                 switch(event.key.code) {
                     case(sf::Keyboard::Key::W):
-                        snake.direction = Vec2I(0, -1);
+                        snake.direction = Vec2I(0, -1); // up   
                         break;
                     case(sf::Keyboard::Key::A):
-                        snake.direction = Vec2I(-1, 0);
+                        snake.direction = Vec2I(-1, 0); // left
                         break;
                     case(sf::Keyboard::Key::S):
-                        snake.direction = Vec2I(0, 1);
+                        snake.direction = Vec2I(0, 1); // down
                         break;
                     case(sf::Keyboard::Key::D):
-                        snake.direction = Vec2I(1, 0);
+                        snake.direction = Vec2I(1, 0); // right
                         break;
                     default: {}
                 }
             }
         }
 
+        if (snake.danger(snake.direction)) window.close();
         snake.move(sf::Keyboard::isKeyPressed(sf::Keyboard::Space));
         window.clear();
         snake.draw(window, body);
         window.display();
 
-        while ((std::chrono::high_resolution_clock::now() - start).count() < 100'000'000) {} // scuffed way of halting till time has passed
+        while ((std::chrono::high_resolution_clock::now() - start).count() < 50'000'000) {} // scuffed way of halting till time has passed
     }
     std::cout << "bye :)";
     return 0;
