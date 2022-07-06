@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 #include <random>
-#include <bitset>
+// #include <bitset> for displaying ints in binary
 
 #include "SFML/Graphics.hpp"
 #include "Vector2.hpp"
@@ -15,18 +15,17 @@
 constexpr bool human = false;
 
 template<size_t actions>
-struct State : std::array<float, actions> {
-    using arr = std::array<float, actions>;
-    float maxValue () const { return *maxIter(); }
-    size_t maxIndex () const { return maxIter() - arr::cbegin(); }
-    size_t maxIndexRand (std::mt19937& gen) const { 
+struct State : std::array<double, actions> {
+    using arr = std::array<double, actions>;
+    double maxValue () const { return *maxIter(); }
+    std::size_t maxIndex () const { return maxIter() - arr::cbegin(); }
+    std::size_t maxIndexRand (std::mt19937& gen) const { 
         std::vector<std::size_t> indicies;
-        float max = maxValue();
-        // std::cout << max << std::endl;
         indicies.reserve(actions);
-        for (std::size_t i = 0; i < actions; ++i) if ((*this)[i] == max) { indicies.push_back(i); }
+        for (std::size_t i = 0; i < actions; ++i) if ((*this)[i] == maxValue()) { indicies.push_back(i); }
+        // std::cout << maxValue() << std::endl;
         if (indicies.size() == 1) { return indicies[0]; }
-        std::uniform_int_distribution<int> r(0, indicies.size() - 1);
+        std::uniform_int_distribution<> r(0, static_cast<int>(indicies.size()) - 1);
         return indicies[r(gen)];
     }
 
@@ -38,12 +37,12 @@ private:
 
 template<size_t actions, size_t states>
 class QTable{
-    const float learningRate = 0.03F;
-    const float discountFactor = 0.5F; // idk
+    const double learningRate = 0.03F;
+    const double discountFactor = 0.5F; // idk
 
 public :
     std::array<State<actions>, states> table;
-    void update(unsigned short state1, unsigned short state2, int action, float reward) {
+    void update(unsigned short state1, unsigned short state2, const std::size_t& action, double reward) {
       table[state1][action] += learningRate * (reward + discountFactor * table[state2].maxValue() - table[state1][action]); // bellman equation https://en.wikipedia.org/wiki/Bellman_equation
     }
 
@@ -68,12 +67,12 @@ class Snake {
 
     void reset(std::mt19937& gen) { 
         static std::uniform_int_distribution<int> r(0, 3);
-        direction = Vec2I(1, 0);
-        pieces = {gridSize / 2, gridSize / 2 + acc2Dir[r(gen)]};
+        direction = acc2Dir[r(gen)];
+        pieces = {gridSize / 2, gridSize / 2 - direction};
         head = 0;
     }
 
-    void updateDir(int a) { direction = acc2Dir[a]; }
+    void updateDir(const std::size_t& a) { direction = acc2Dir[a]; }
      
     void move(bool grow) {
         Vec2I oldPos = pieces[head];
@@ -126,7 +125,7 @@ class Snake {
         return s;
     }
 
-    bool danger(int a) {
+    bool danger(const std::size_t& a) {
         Vec2I newHead = pieces[head] + acc2Dir[a];
         if (newHead.x < 0 || newHead.x > gridSize.x || newHead.y < 0 || newHead.y > gridSize.y) return true;
         return std::any_of(pieces.cbegin(), pieces.cend(),
@@ -144,7 +143,7 @@ Vec2I newFood(const Vec2I& gridSize, const Snake& snake, std::mt19937& gen) {
 };
 
 int main() {
-    constexpr Vec2I gridSize(20, 20);
+    constexpr Vec2I gridSize(24, 24);
     std::mt19937 gen(std::random_device{}());
     Snake       snake(gridSize / 2, gridSize);
     QTable<4,512> table{};
@@ -157,19 +156,20 @@ int main() {
     body.setFillColor(sf::Color::Green);
 
     sf::ContextSettings settings;
-    // settings.antialiasingLevel = 8;
     sf::RenderWindow window(sf::VideoMode((gridSize.x + 1) * 10, (gridSize.y + 1) * 10), "Snake", sf::Style::Default,
-                            settings); // sf::VideoMode::getDesktopMode(), sf::Style::Fullscreen old one
+                            settings);
 
     short state1;
     short state2 = snake.state(foodPos);
     bool foodEaten = false;
-    float reward = 0.0F;
-    int action = 0;
+    double reward = 0.0F;
+    Vec2I prevHead;
+    std::size_t action = 0;
     while (window.isOpen()) {
         std::chrono::system_clock::time_point start = std::chrono::high_resolution_clock::now();
 
         state1 = state2;
+        prevHead = snake.pieces[snake.head];
 
         sf::Event event; // NOLINT
         while (window.pollEvent(event)) {
@@ -198,13 +198,18 @@ int main() {
         snake.updateDir(action);
 
         if (snake.danger(action)) { // crash bang wollop
-            reward = -2.0F;
+            reward = -20.0F;
             snake.move(false);
             state2 = snake.state(foodPos);
             snake.reset(gen);
         } else { //
-            reward = static_cast<float>(foodEaten) * 10.0F;
+            reward = static_cast<double>(foodEaten) * 2.0F;
             snake.move(foodEaten);
+            if (!foodEaten) { 
+                // std::cout << "old diff: " << foodPos - prevHead << std::endl;
+                // std::cout << "new diff: " << foodPos - snake.pieces[snake.head] << std::endl;
+                reward = (pow(snake.pieces[snake.head].x - foodPos.x, 2) + pow(snake.pieces[snake.head].y - foodPos.y, 2)) < (pow(prevHead.x - foodPos.x, 2) + pow(prevHead.y - foodPos.y, 2)) ? 0.1F : -0.1F;
+            } 
             state2 = snake.state(foodPos);
         }
 
@@ -221,7 +226,7 @@ int main() {
         window.draw(food);
         window.display();
 
-        while ((std::chrono::high_resolution_clock::now() - start).count() < 5'000'000) {} // scuffed way of halting till time has passed
+        while ((sf::Keyboard::isKeyPressed(sf::Keyboard::Space) && (std::chrono::high_resolution_clock::now() - start).count() < 20'000'000)) {} // scuffed way of halting till time has passed
     }
     std::cout << "bye :) \n";
     return 0;
