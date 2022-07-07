@@ -9,7 +9,6 @@
 #include <random>
 // #include <bitset> for displaying ints in binary
 
-#include "SFML/Graphics.hpp"
 #include "Vector2.hpp"
 
 constexpr bool human = false;
@@ -82,32 +81,6 @@ class Snake {
         pieces[head] = oldPos + direction;
     }
 
-    void draw(sf::RenderWindow& window, sf::RectangleShape rec) {
-        for (const auto& p: pieces) {
-            rec.setPosition(static_cast<float>(p.x) * 10, static_cast<float>(p.y) * 10);
-            window.draw(rec);
-        }
-        rec.setFillColor(sf::Color::Red);
-        rec.setSize(sf::Vector2f(3, 3));
-        sf::RectangleShape rec2 = rec;
-        Vector2<float>     headPos(static_cast<float>(pieces[head].x), static_cast<float>(pieces[head].y));
-        if (direction == Vec2I(1, 0)) {
-            rec.setPosition(headPos.x * 10 + 7, headPos.y * 10); // right
-            rec2.setPosition(headPos.x * 10 + 7, headPos.y * 10 + 7);
-        } else if (direction == Vec2I(-1, 0)) {
-            rec.setPosition(headPos.x * 10, headPos.y * 10); // left
-            rec2.setPosition(headPos.x * 10, headPos.y * 10 + 7);
-        } else if (direction == Vec2I(0, -1)) {
-            rec.setPosition(headPos.x * 10 + 7, headPos.y * 10); // up
-            rec2.setPosition(headPos.x * 10, headPos.y * 10);
-        } else {
-            rec.setPosition(headPos.x * 10 + 7, headPos.y * 10 + 7); // down
-            rec2.setPosition(headPos.x * 10, headPos.y * 10 + 7);
-        }
-        window.draw(rec);
-        window.draw(rec2);
-    }
-
     unsigned short state(const Vec2I& food) {
         const Vec2I    h = pieces[head];
         unsigned short s = static_cast<unsigned short>(danger(0));                                                   // danger up
@@ -139,15 +112,6 @@ Vec2I newFood(const Vec2I& gridSize, const Snake& snake, std::mt19937& gen) {
     return food;
 };
 
-void displayCount(int count, sf::RenderWindow& window, const sf::Font& font) {
-    sf::Text text;
-    text.setFont(font); // font is a sf::Font
-    text.setString(std::to_string(count));
-    text.setCharacterSize(10); // in pixels, not points!
-    text.setFillColor(sf::Color::Red);
-    window.draw(text);
-}
-
 void stop(){ return; }
 
 int main() {
@@ -157,22 +121,6 @@ int main() {
     QTable<4,512> table{};
     Vec2I foodPos(newFood(gridSize, snake, gen));
 
-    sf::RectangleShape body;
-    body.setSize(sf::Vector2f(10, 10));
-    sf::RectangleShape food = body;
-    food.setFillColor(sf::Color::White);
-    body.setFillColor(sf::Color::Green);
-
-    sf::ContextSettings settings;
-    sf::RenderWindow window(sf::VideoMode((gridSize.x + 1) * 10, (gridSize.y + 1) * 10), "Snake", sf::Style::Default,
-                            settings);
-
-    sf::Font font;
-    if (!font.loadFromFile("arial.ttf")) {
-        std::cout << "Font file not found";
-        return (EXIT_FAILURE);
-    }
-
     short state1;
     short state2 = snake.state(foodPos);
     bool foodEaten = false;
@@ -180,36 +128,14 @@ int main() {
     int count = 0;
     Vec2I prevHead;
     std::size_t action = 0;
-    while (window.isOpen()) {
+    while (count < 100'000'000) {
         std::chrono::system_clock::time_point start = std::chrono::high_resolution_clock::now();
         count++;
 
         state1 = state2;
         prevHead = snake.pieces[snake.head];
 
-        sf::Event event; // NOLINT
-        while (window.pollEvent(event)) {
-            if (event.type == sf::Event::Closed) window.close();
-            if (event.type == sf::Event::KeyPressed && human) { // for human inputs only
-                switch (event.key.code) {
-                case (sf::Keyboard::Key::W):
-                    action = 0; // up
-                    break;
-                case (sf::Keyboard::Key::D):
-                    action = 1; // right
-                    break;
-                case (sf::Keyboard::Key::S):
-                    action = 2; // down
-                    break;
-                case (sf::Keyboard::Key::A):
-                    action = 3; // left
-                    break;
-                default: {}
-                }
-            }
-        }
-
-        if (!human) { action = table.table[state1].maxIndex(); } // ai chooses inputs 
+        if (!human) { action = table.table[state1].maxIndexRand(gen); } // ai chooses inputs 
 
         snake.updateDir(action);
 
@@ -222,8 +148,6 @@ int main() {
             reward = static_cast<double>(foodEaten) * 2.0F;
             snake.move(foodEaten);
             if (!foodEaten) { 
-                // std::cout << "old diff: " << foodPos - prevHead << std::endl;
-                // std::cout << "new diff: " << foodPos - snake.pieces[snake.head] << std::endl;
                 reward = (pow(snake.pieces[snake.head].x - foodPos.x, 2) + pow(snake.pieces[snake.head].y - foodPos.y, 2)) < (pow(prevHead.x - foodPos.x, 2) + pow(prevHead.y - foodPos.y, 2)) ? 0.1F : -0.1F;
             } 
             state2 = snake.state(foodPos);
@@ -231,21 +155,9 @@ int main() {
 
         table.update(state1, state2, action, reward);
 
-        // std::cout << static_cast<std::bitset<8>>(state1) << std::endl;
 
         foodEaten = snake.pieces[snake.head] == foodPos;
         if (foodEaten) { foodPos = newFood(gridSize, snake, gen); }
-
-        if(!sf::Keyboard::isKeyPressed(sf::Keyboard::Space)) {
-            window.clear();
-            snake.draw(window, body);
-            food.setPosition(static_cast<float>(foodPos.x) * 10.0F, static_cast<float>(foodPos.y) * 10.0F);
-            displayCount(count, window, font);
-            window.draw(food);
-            window.display();
-        }
-
-        while ((!sf::Keyboard::isKeyPressed(sf::Keyboard::Space) && (std::chrono::high_resolution_clock::now() - start).count() < 100'000'000)) {} // scuffed way of halting till time has passed
     }
     std::cout << "bye :) \n";
     return 0;
