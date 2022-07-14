@@ -2,6 +2,7 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <fstream>
 #include <iostream>
 #include <iterator>
 #include <string>
@@ -18,14 +19,6 @@ struct State : std::array<double, actions> {
     using arr = std::array<double, actions>;
     double maxValue () const { return *maxIter(); }
     std::size_t maxIndex () const { return maxIter() - arr::cbegin(); }
-    std::size_t maxIndexRand (std::mt19937& gen) const { 
-        std::vector<std::size_t> indicies;
-        indicies.reserve(actions);
-        for (std::size_t i = 0; i < actions; ++i) if ((*this)[i] == maxValue()) { indicies.push_back(i); }
-        if (indicies.size() == 1) { return indicies[0]; }
-        std::uniform_int_distribution<> r(0, static_cast<int>(indicies.size()) - 1);
-        return indicies[r(gen)];
-    }
 
 private:
    arr::const_iterator maxIter() const { return std::max_element(arr::cbegin(), arr::cend()); }
@@ -40,6 +33,18 @@ public :
     std::array<State<actions>, states> table;
     void update(unsigned short state1, unsigned short state2, const std::size_t& action, double reward) {
       table[state1][action] += learningRate * (reward + discountFactor * table[state2].maxValue() - table[state1][action]); // bellman equation https://en.wikipedia.org/wiki/Bellman_equation
+    }
+    
+    void read(const std::string& path) { 
+        std::ifstream inputFile(path, std::ios::binary);
+        if (inputFile.is_open()) {
+            inputFile.read(reinterpret_cast<char*>(&table), sizeof(table));
+        }
+    }
+
+    void write(const std::string& path) { 
+        std::ofstream outputFile(path, std::ios::binary);
+        outputFile.write(reinterpret_cast<char*>(&table), sizeof(table));
     }
 
     QTable(){
@@ -57,20 +62,17 @@ class Snake {
     const Vec2I gridSize;
     Vec2I              direction = Vec2I(1, 0);
 
-
   public:
     Snake(const Vec2I& pos_, const Vec2I& gridSize_) : pieces({pos_, pos_ + Vec2I(-1, 0)}), gridSize(gridSize_) {}
 
     void reset(std::mt19937& gen) { 
         static std::uniform_int_distribution<int> r(0, 3);
-        direction = acc2Dir[r(gen)];
-        pieces = {gridSize / 2, gridSize / 2 - direction};
+        pieces = {gridSize / 2, gridSize / 2 - acc2Dir[r(gen)]};
         head = 0;
     }
-
-    void updateDir(const std::size_t& a) { direction = acc2Dir[a]; }
      
-    void move(bool grow) {
+    void move(bool grow, const std::size_t& a) {
+        direction = acc2Dir[a];
         Vec2I oldPos = pieces[head];
         if (grow) {
             pieces.insert(pieces.begin() + static_cast<std::ptrdiff_t>(head), Vec2I());
@@ -83,10 +85,10 @@ class Snake {
 
     unsigned short state(const Vec2I& food) {
         const Vec2I    h = pieces[head];
-        unsigned short s = static_cast<unsigned short>(danger(0));                                                   // danger up
-        s                = static_cast<unsigned short>(s << 1U) | static_cast<unsigned short>(danger(1));            // danger right
-        s                = static_cast<unsigned short>(s << 1U) | static_cast<unsigned short>(danger(2));            // danger down
-        s                = static_cast<unsigned short>(s << 1U) | static_cast<unsigned short>(danger(3));            // danger left
+        unsigned short s = static_cast<unsigned short>(danger(0));                                                              // danger up
+        s                = static_cast<unsigned short>(s << 1U) | static_cast<unsigned short>(danger(1));                       // danger right
+        s                = static_cast<unsigned short>(s << 1U) | static_cast<unsigned short>(danger(2));                       // danger down
+        s                = static_cast<unsigned short>(s << 1U) | static_cast<unsigned short>(danger(3));                       // danger left
         s                = static_cast<unsigned short>(s << 1U) | static_cast<unsigned short>(direction.y == -1);               // moving up
         s                = static_cast<unsigned short>(s << 1U) | static_cast<unsigned short>(direction.x == 1);                // moving right
         s                = static_cast<unsigned short>(s << 1U) | static_cast<unsigned short>(food.y < h.y);                    // food up
@@ -112,14 +114,15 @@ Vec2I newFood(const Vec2I& gridSize, const Snake& snake, std::mt19937& gen) {
     return food;
 };
 
-void stop(){ return; }
-
 int main() {
     constexpr Vec2I gridSize(50, 50);
+    const std::string path{"brain.bin"};
     std::mt19937 gen(std::random_device{}());
     Snake       snake(gridSize / 2, gridSize);
     QTable<4,512> table{};
     Vec2I foodPos(newFood(gridSize, snake, gen));
+
+    table.read(path);
 
     short state1;
     short state2 = snake.state(foodPos);
@@ -129,24 +132,20 @@ int main() {
     Vec2I prevHead;
     std::size_t action = 0;
     while (count < 100'000'000) {
-        std::chrono::system_clock::time_point start = std::chrono::high_resolution_clock::now();
         count++;
-
         state1 = state2;
         prevHead = snake.pieces[snake.head];
 
-        if (!human) { action = table.table[state1].maxIndexRand(gen); } // ai chooses inputs 
-
-        snake.updateDir(action);
+        if (!human) { action = table.table[state1].maxIndex(); } // ai chooses inputs
 
         if (snake.danger(action)) { // crash bang wollop
             reward = -10.0F;
-            snake.move(false);
+            snake.move(false, action);
             state2 = snake.state(foodPos);
             snake.reset(gen);
         } else { //
             reward = static_cast<double>(foodEaten) * 2.0F;
-            snake.move(foodEaten);
+            snake.move(foodEaten, action);
             if (!foodEaten) { 
                 reward = (pow(snake.pieces[snake.head].x - foodPos.x, 2) + pow(snake.pieces[snake.head].y - foodPos.y, 2)) < (pow(prevHead.x - foodPos.x, 2) + pow(prevHead.y - foodPos.y, 2)) ? 0.1F : -0.1F;
             } 
@@ -155,10 +154,11 @@ int main() {
 
         table.update(state1, state2, action, reward);
 
-
         foodEaten = snake.pieces[snake.head] == foodPos;
         if (foodEaten) { foodPos = newFood(gridSize, snake, gen); }
     }
+
+    table.write(path);
     std::cout << "bye :) \n";
     return 0;
 }

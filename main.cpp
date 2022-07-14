@@ -58,7 +58,6 @@ class Snake {
     const Vec2I gridSize;
     Vec2I              direction = Vec2I(1, 0);
 
-
   public:
     Snake(const Vec2I& pos_, const Vec2I& gridSize_) : pieces({pos_, pos_ + Vec2I(-1, 0)}), gridSize(gridSize_) {}
 
@@ -190,23 +189,6 @@ int main() {
         sf::Event event; // NOLINT
         while (window.pollEvent(event)) {
             if (event.type == sf::Event::Closed) window.close();
-            if (event.type == sf::Event::KeyPressed && human) { // for human inputs only
-                switch (event.key.code) {
-                case (sf::Keyboard::Key::W):
-                    action = 0; // up
-                    break;
-                case (sf::Keyboard::Key::D):
-                    action = 1; // right
-                    break;
-                case (sf::Keyboard::Key::S):
-                    action = 2; // down
-                    break;
-                case (sf::Keyboard::Key::A):
-                    action = 3; // left
-                    break;
-                default: {}
-                }
-            }
         }
 
         if (!human) { action = table.table[state1].maxIndex(); } // ai chooses inputs 
@@ -245,7 +227,7 @@ int main() {
             window.display();
         }
 
-        while ((!sf::Keyboard::isKeyPressed(sf::Keyboard::Space) && (std::chrono::high_resolution_clock::now() - start).count() < 100'000'000)) {} // scuffed way of halting till time has passed
+        while ((!sf::Keyboard::isKeyPressed(sf::Keyboard::Space) && (std::chrono::high_resolution_clock::now() - start).count() < 10'000'000)) {} // scuffed way of halting till time has passed
     }
     std::cout << "bye :) \n";
     return 0;
