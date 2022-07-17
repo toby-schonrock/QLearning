@@ -1,56 +1,23 @@
+#include "QLearning.hpp"
+#include "Vector2.hpp"
+
 #include <algorithm>
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <fstream>
 #include <iostream>
 #include <iterator>
-#include <string>
-#include <vector>
 #include <random>
 // #include <bitset> for displaying ints in binary
 
-#include "Vector2.hpp"
 
 constexpr bool human = false;
 
-template<size_t actions>
-struct State : std::array<double, actions> {
-    using arr = std::array<double, actions>;
-    double maxValue () const { return *maxIter(); }
-    std::size_t maxIndex () const { return maxIter() - arr::cbegin(); }
-
-private:
-   arr::const_iterator maxIter() const { return std::max_element(arr::cbegin(), arr::cend()); }
-};
-
-template<size_t actions, size_t states>
-class QTable{
-    const double learningRate = 0.03F;
-    const double discountFactor = 0.5F; // idk
-
-public :
-    std::array<State<actions>, states> table;
-    void update(unsigned short state1, unsigned short state2, const std::size_t& action, double reward) {
-      table[state1][action] += learningRate * (reward + discountFactor * table[state2].maxValue() - table[state1][action]); // bellman equation https://en.wikipedia.org/wiki/Bellman_equation
-    }
-    
-    void read(const std::string& path) { 
-        std::ifstream inputFile(path, std::ios::binary);
-        if (inputFile.is_open()) {
-            inputFile.read(reinterpret_cast<char*>(&table), sizeof(table));
-        }
-    }
-
-    void write(const std::string& path) { 
-        std::ofstream outputFile(path, std::ios::binary);
-        outputFile.write(reinterpret_cast<char*>(&table), sizeof(table));
-    }
-
-    QTable(){
-        for (State<actions>& s : table) s.fill(0.5F);
-    }
-};
+void bitBuilder(unsigned short& s, bool b) {
+    s = static_cast<unsigned short>(static_cast<unsigned short>(s << 1U) | static_cast<unsigned short>(b));
+}
 
 class Snake {
   public:
@@ -66,7 +33,7 @@ class Snake {
     Snake(const Vec2I& pos_, const Vec2I& gridSize_) : pieces({pos_, pos_ + Vec2I(-1, 0)}), gridSize(gridSize_) {}
 
     void reset(std::mt19937& gen) { 
-        static std::uniform_int_distribution<int> r(0, 3);
+        static std::uniform_int_distribution<std::size_t> r(0, 3);
         pieces = {gridSize / 2, gridSize / 2 - acc2Dir[r(gen)]};
         head = 0;
     }
@@ -85,15 +52,15 @@ class Snake {
 
     unsigned short state(const Vec2I& food) {
         const Vec2I    h = pieces[head];
-        unsigned short s = static_cast<unsigned short>(danger(0));                                                              // danger up
-        s                = static_cast<unsigned short>(s << 1U) | static_cast<unsigned short>(danger(1));                       // danger right
-        s                = static_cast<unsigned short>(s << 1U) | static_cast<unsigned short>(danger(2));                       // danger down
-        s                = static_cast<unsigned short>(s << 1U) | static_cast<unsigned short>(danger(3));                       // danger left
-        s                = static_cast<unsigned short>(s << 1U) | static_cast<unsigned short>(direction.y == -1);               // moving up
-        s                = static_cast<unsigned short>(s << 1U) | static_cast<unsigned short>(direction.x == 1);                // moving right
-        s                = static_cast<unsigned short>(s << 1U) | static_cast<unsigned short>(food.y < h.y);                    // food up
-        s                = static_cast<unsigned short>(s << 1U) | static_cast<unsigned short>(food.x > h.x);                    // food right
-        s                = static_cast<unsigned short>(s << 1U) | static_cast<unsigned short>(food.y == h.y || food.x == h.x);  // food on row / column
+        unsigned short s = static_cast<unsigned short>(danger(0));    // danger up
+        bitBuilder(s, danger(1));                                     // danger right
+        bitBuilder(s, danger(2));                                     // danger down
+        bitBuilder(s, danger(3));                                     // danger left
+        bitBuilder(s, direction.y == -1);                             // moving up
+        bitBuilder(s, direction.x == 1);                              // moving right
+        bitBuilder(s, food.y < h.y);                                  // food up
+        bitBuilder(s, food.x > h.x);                                  // food right
+        bitBuilder(s, food.y == h.y || food.x == h.x);                // food on row / column
         return s;
     }
 
@@ -112,7 +79,7 @@ Vec2I newFood(const Vec2I& gridSize, const Snake& snake, std::mt19937& gen) {
     do { food = Vec2I(distx(gen), disty(gen)); }
     while (std::any_of(snake.pieces.cbegin(), snake.pieces.cend(), [&food](const Vec2I& p) { return p == food; }));
     return food;
-};
+}
 
 int main() {
     constexpr Vec2I gridSize(50, 50);
@@ -124,14 +91,14 @@ int main() {
 
     table.read(path);
 
-    short state1;
-    short state2 = snake.state(foodPos);
+    unsigned short state1;
+    unsigned short state2 = snake.state(foodPos);
     bool foodEaten = false;
     double reward = 0.0F;
     int count = 0;
     Vec2I prevHead;
     std::size_t action = 0;
-    while (count < 100'000'000) {
+    while (count < 1'000'000'000) {
         count++;
         state1 = state2;
         prevHead = snake.pieces[snake.head];
@@ -139,7 +106,7 @@ int main() {
         if (!human) { action = table.table[state1].maxIndex(); } // ai chooses inputs
 
         if (snake.danger(action)) { // crash bang wollop
-            reward = -10.0F;
+            reward = -5.0F;
             snake.move(false, action);
             state2 = snake.state(foodPos);
             snake.reset(gen);
