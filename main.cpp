@@ -146,6 +146,7 @@ int main() {
     bool foodEaten = false;
     double reward = 0.0F;
     int count = 0;
+    int movesSinceFood = 0;
     Vec2I prevHead;
     std::size_t action = 0;
     while (window.isOpen()) {
@@ -163,19 +164,24 @@ int main() {
         if (!human) { action = table.table[static_cast<std::size_t>(state1)].maxIndex(); } // ai chooses inputs 
 
         if (snake.danger(action)) {         // crash bang wollop
-            reward = -5.0F;
+            reward = -10.0F;
             snake.move(false, action);
             state2 = snake.state(foodPos);
             snake.reset(gen);
+            movesSinceFood = 0;
         } else {                           // not crash
-            reward = static_cast<double>(foodEaten) * 2.0F;
             snake.move(foodEaten, action);
             if (!foodEaten) { 
                 reward = (pow(snake.pieces[snake.head].x - foodPos.x, 2) + pow(snake.pieces[snake.head].y - foodPos.y, 2)) < (pow(prevHead.x - foodPos.x, 2) + pow(prevHead.y - foodPos.y, 2)) ? 0.1F : -0.1F;
+            } else {
+                reward = 2.0F;
+                movesSinceFood = 0;
             } 
+            if (movesSinceFood > 200) reward -= 0.1F * pow(1.1F, movesSinceFood - 200);
             state2 = snake.state(foodPos);
         }
 
+        movesSinceFood++;
         table.update(state1, state2, action, reward);
 
         foodEaten = snake.pieces[snake.head] == foodPos;
