@@ -83,7 +83,10 @@ Vec2I newFood(const Vec2I& gridSize, const Snake& snake, std::mt19937& gen) {
 
 int main() {
     constexpr Vec2I gridSize(50, 50);
+    constexpr int hunger = 150;
     const std::string path{"brain.bin"};
+
+
     std::mt19937 gen(std::random_device{}());
     Snake       snake(gridSize / 2, gridSize);
     QTable<4,512> table{};
@@ -121,7 +124,7 @@ int main() {
                 reward = 2.0F;
                 movesSinceFood = 0;
             } 
-            if (movesSinceFood > 200) reward -= 0.1F * pow(1.1F, movesSinceFood - 100);
+            if (movesSinceFood > hunger) reward -= 0.1F * pow(1.1F, movesSinceFood - hunger);
             state2 = snake.state(foodPos);
         }
 
